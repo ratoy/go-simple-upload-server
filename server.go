@@ -1,18 +1,19 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	"github.com/Sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/Sirupsen/logrus"
 )
 
 // Server represents a simple-upload server.
@@ -73,7 +74,9 @@ func (s Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	filename := info.Filename
+	//filename := info.Filename
+	filename := getDstFileName(info.Filename)
+
 	if filename == "" {
 		filename = fmt.Sprintf("%x", sha1.Sum(body))
 	}
@@ -112,6 +115,25 @@ func (s Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}).Info("file uploaded by POST")
 	w.WriteHeader(http.StatusOK)
 	writeSuccess(w, uploadedURL)
+}
+
+func getDstFileName(srcFileName string) (dstFileName string) {
+	uuid, _ := newUUID()
+	return uuid + filepath.Ext(srcFileName)
+}
+
+// newUUID generates a random UUID according to RFC 4122
+func newUUID() (string, error) {
+	uuid := make([]byte, 16)
+	n, err := io.ReadFull(rand.Reader, uuid)
+	if n != len(uuid) || err != nil {
+		return "", err
+	}
+	// variant bits; see section 4.1.1
+	uuid[8] = uuid[8]&^0xc0 | 0x80
+	// version 4 (pseudo-random); see section 4.1.3
+	uuid[6] = uuid[6]&^0xf0 | 0x40
+	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), nil
 }
 
 func (s Server) handlePut(w http.ResponseWriter, r *http.Request) {
